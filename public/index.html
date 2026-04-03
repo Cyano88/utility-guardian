@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Utility Guardian ⚡ | OWF Hackathon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#07070e;--surface:#0e0e1a;--card:#12121f;--border:#1e1e33;--primary:#6366f1;
+  --cyan:#06b6d4;--green:#22c55e;--yellow:#f59e0b;--red:#ef4444;--text:#e2e8f0;--muted:#64748b;--dim:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 50% -20%,#6366f115,transparent);pointer-events:none}
+
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;
+  background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.logo-icon{font-size:22px}
+.badge-live{display:flex;align-items:center;gap:6px;background:#22c55e15;border:1px solid #22c55e40;
+  color:var(--green);font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;letter-spacing:.5px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+.topbar-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.agent-addr{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);
+  background:var(--card);padding:5px 10px;border-radius:6px;border:1px solid var(--border)}
+.network-badge{font-size:11px;color:var(--cyan);background:#06b6d415;border:1px solid #06b6d430;
+  padding:4px 10px;border-radius:20px;font-weight:500}
+.owf-badge{font-size:10px;color:var(--primary);background:#6366f110;border:1px solid #6366f130;
+  padding:4px 10px;border-radius:20px;font-weight:600;letter-spacing:.3px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--yellow);transition:.4s}
+.status-dot.online{background:var(--green)}
+
+.main{padding:20px 28px;max-width:1600px;margin:0 auto}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.content-row{display:grid;grid-template-columns:1fr 1.6fr;gap:14px;margin-bottom:18px}
+.bottom-row{display:grid;grid-template-columns:1.1fr 1fr;gap:14px}
+@media(max-width:900px){.stats-row{grid-template-columns:1fr 1fr}.content-row,.bottom-row{grid-template-columns:1fr}}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px}
+.card-title{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;
+  letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card-title span{font-size:14px}
+
+.stat-card{padding:16px 18px}
+.stat-label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.stat-value{font-size:26px;font-weight:700;margin:6px 0 2px;line-height:1}
+.stat-sub{font-size:11px;color:var(--muted)}
+.stat-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+  padding:2px 7px;border-radius:10px;margin-top:4px}
+.badge-green{background:#22c55e18;color:var(--green);border:1px solid #22c55e30}
+.badge-cyan{background:#06b6d418;color:var(--cyan);border:1px solid #06b6d430}
+.badge-yellow{background:#f59e0b18;color:var(--yellow);border:1px solid #f59e0b30}
+.badge-red{background:#ef444418;color:var(--red);border:1px solid #ef444430}
+.badge-purple{background:#6366f118;color:var(--primary);border:1px solid #6366f130}
+
+.gauge-card{display:flex;flex-direction:column;align-items:center;padding:20px}
+.gauge-wrap{position:relative;width:200px;height:200px;margin-bottom:12px}
+.gauge-wrap svg{width:100%;height:100%}
+.gauge-track{fill:none;stroke:#1e1e33;stroke-width:14;stroke-linecap:round}
+.gauge-fill{fill:none;stroke-width:14;stroke-linecap:round;
+  transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1),stroke .4s;
+  transform:rotate(-90deg);transform-origin:50% 50%}
+.gauge-glow{fill:none;stroke-width:3;stroke-linecap:round;opacity:.3;
+  transform:rotate(-90deg);transform-origin:50% 50%;filter:blur(3px);
+  transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1),stroke .4s}
+.gauge-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-num{font-size:38px;font-weight:700;line-height:1;transition:.6s}
+.gauge-unit{font-size:11px;color:var(--muted);font-weight:500;letter-spacing:1px;margin-top:2px}
+.meter-bar{width:100%;background:var(--border);border-radius:4px;height:6px;overflow:hidden;margin-top:8px}
+.meter-fill{height:100%;border-radius:4px;transition:width 1s ease,background .4s}
+.low-alert{display:none;align-items:center;gap:8px;background:#ef444412;border:1px solid #ef444440;
+  color:var(--red);font-size:12px;font-weight:600;padding:8px 14px;border-radius:8px;margin-top:10px;
+  animation:alertPulse 1s infinite}
+.low-alert.show{display:flex}
+@keyframes alertPulse{0%,100%{opacity:1}50%{opacity:.6}}
+.meter-info{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;margin-top:12px}
+.meter-info-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center}
+.meter-info-item .val{font-size:14px;font-weight:600;font-family:'JetBrains Mono',monospace}
+.meter-info-item .lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-top:2px}
+
+.tx-feed{height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.tx-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;
+  border-bottom:1px solid var(--border);animation:fadeIn .4s ease}
+.tx-item:last-child{border-bottom:none}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.tx-type{font-size:9px;font-weight:700;padding:3px 7px;border-radius:6px;white-space:nowrap;flex-shrink:0;margin-top:2px;letter-spacing:.5px}
+.tx-type.AAVE_SUPPLY  {background:#6366f120;color:var(--primary);border:1px solid #6366f130}
+.tx-type.AAVE_WITHDRAW{background:#f59e0b15;color:var(--yellow);border:1px solid #f59e0b30}
+.tx-type.FEE_TRANSFER {background:#22c55e15;color:var(--green);border:1px solid #22c55e30}
+.tx-type.VTPASS_AEDC  {background:#06b6d415;color:var(--cyan);border:1px solid #06b6d430}
+.tx-type.ERC20_APPROVE{background:#8b5cf615;color:#a78bfa;border:1px solid #8b5cf630}
+.tx-body{flex:1;min-width:0}
+.tx-hash{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-amount{font-size:13px;font-weight:600;margin:2px 0}
+.tx-meta{font-size:10px;color:var(--muted)}
+.tx-time{font-size:9px;color:var(--muted);flex-shrink:0;margin-top:3px}
+.tx-status.confirmed{color:var(--green);font-size:9px;font-weight:600}
+
+.token-glow{font-size:28px;font-weight:700;font-family:'JetBrains Mono',monospace;
+  color:var(--cyan);letter-spacing:6px;text-shadow:0 0 20px #06b6d450;text-align:center;
+  padding:16px 0;min-height:42px;transition:.4s;word-break:break-all}
+.token-waiting{font-size:13px;color:var(--muted);font-style:italic;text-align:center;padding:10px 0}
+.fee-breakdown{margin-top:12px}
+.fee-row{display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.fee-row:last-child{border-bottom:none;font-weight:600;color:var(--cyan)}
+.fee-row .lbl{color:var(--dim)}
+.fee-row .val{font-family:'JetBrains Mono',monospace;font-size:12px}
+
+.policy-feed{height:190px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.policy-item{display:flex;align-items:center;gap:10px;padding:7px 0;
+  border-bottom:1px solid var(--border);font-size:11px;animation:fadeIn .3s ease}
+.policy-icon{font-size:14px;flex-shrink:0}
+.policy-rule{flex:1;color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:10px}
+.policy-result.pass{color:var(--green);font-size:10px;font-weight:700}
+.policy-result.fail{color:var(--red);font-size:10px;font-weight:700}
+.policy-ts{font-size:9px;color:var(--muted);white-space:nowrap}
+
+.owf-features{display:flex;flex-direction:column;gap:7px;margin-top:4px}
+.owf-feature{display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 14px}
+.owf-feature-name{font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--dim)}
+.owf-check{color:var(--green);font-size:13px}
+
+.console{height:210px;overflow-y:auto;background:#050508;border:1px solid var(--border);
+  border-radius:8px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:11px;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.log-line{line-height:1.7;animation:fadeIn .2s ease}
+.log-info{color:#94a3b8}.log-warn{color:var(--yellow)}.log-debug{color:#475569}.log-error{color:var(--red)}
+.log-ts{color:#334155;margin-right:6px}
+
+.toast{position:fixed;bottom:28px;right:28px;background:var(--card);border:1px solid var(--green);
+  border-radius:12px;padding:16px 20px;max-width:360px;z-index:999;
+  transform:translateY(120%);transition:.5s cubic-bezier(.4,0,.2,1);box-shadow:0 8px 32px #00000080}
+.toast.show{transform:translateY(0)}
+.toast-title{font-size:13px;font-weight:700;color:var(--green);margin-bottom:6px}
+.toast-token{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;
+  color:var(--cyan);letter-spacing:3px;margin:8px 0}
+.toast-body{font-size:11px;color:var(--muted);line-height:1.6}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">
+    <span class="logo-icon">⚡</span>Utility Guardian
+    <span class="badge-live"><span class="dot"></span>LIVE</span>
+  </div>
+  <div class="topbar-right">
+    <span class="owf-badge">OWF Wallet Standard v1.0.0</span>
+    <span class="network-badge">Base Mainnet · Chain 8453</span>
+    <span class="agent-addr" id="agentAddr">Initializing…</span>
+    <span class="status-dot" id="statusDot"></span>
+  </div>
+</div>
+
+<div class="main">
+  <div class="stats-row">
+    <div class="card stat-card">
+      <div class="stat-label">Meter Balance</div>
+      <div class="stat-value" id="statUnits" style="color:var(--green)">5.0</div>
+      <div class="stat-sub">kWh units · AEDC Prepaid</div>
+      <div class="stat-badge badge-green" id="meterBadge">NOMINAL</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-label">Aave Balance</div>
+      <div class="stat-value" id="statAave" style="color:var(--primary)">$50.00</div>
+      <div class="stat-sub">aBasUSDC · Base Mainnet</div>
+      <div class="stat-badge badge-purple">8.24% APY</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-label">Yield Earned</div>
+      <div class="stat-value" id="statYield" style="color:var(--cyan)">$0.000000</div>
+      <div class="stat-sub">Accruing live on Aave V3</div>
+      <div class="stat-badge badge-cyan">↑ EARNING</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-label">Fees Collected</div>
+      <div class="stat-value" id="statFees" style="color:var(--yellow)">$0.0000</div>
+      <div class="stat-sub">1% guardian service fee</div>
+      <div class="stat-badge badge-yellow" id="feeCount">0 top-ups</div>
+    </div>
+  </div>
+
+  <div class="content-row">
+    <div class="card gauge-card">
+      <div class="card-title"><span>⚡</span>AEDC METER · <span id="meterNum" style="color:var(--cyan)">O159006781284</span></div>
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 200 200">
+          <circle class="gauge-track" cx="100" cy="100" r="80"/>
+          <circle class="gauge-glow" id="gaugeGlow" cx="100" cy="100" r="80"
+            stroke="#22c55e" stroke-dasharray="502.65" stroke-dashoffset="0"/>
+          <circle class="gauge-fill" id="gaugeFill" cx="100" cy="100" r="80"
+            stroke="#22c55e" stroke-dasharray="502.65" stroke-dashoffset="0"/>
+        </svg>
+        <div class="gauge-center">
+          <div class="gauge-num" id="gaugeNum">5.0</div>
+          <div class="gauge-unit">UNITS</div>
+        </div>
+      </div>
+      <div class="meter-bar"><div class="meter-fill" id="meterFill" style="width:50%;background:var(--green)"></div></div>
+      <div class="low-alert" id="lowAlert">⚠ LOW POWER — Top-up in progress…</div>
+      <div class="meter-info">
+        <div class="meter-info-item"><div class="val">3.0</div><div class="lbl">Threshold</div></div>
+        <div class="meter-info-item"><div class="val" id="mTopups">0</div><div class="lbl">Top-ups Done</div></div>
+        <div class="meter-info-item"><div class="val">−0.5/30s</div><div class="lbl">Consumption</div></div>
+        <div class="meter-info-item"><div class="val" id="mStatus" style="color:var(--green)">NOMINAL</div><div class="lbl">Status</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>🔗</span>TRANSACTION FEED · BASE MAINNET</div>
+      <div class="tx-feed" id="txFeed">
+        <div style="text-align:center;padding:40px 0;color:var(--muted);font-size:13px">
+          Waiting for agent to initialize…
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-row">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-title"><span>🎫</span>LAST ELECTRICITY TOKEN</div>
+        <div id="tokenDisplay"><div class="token-waiting">Waiting for first top-up…</div></div>
+        <div class="fee-breakdown" id="feeBreakdown" style="display:none">
+          <div class="fee-row"><span class="lbl">Electricity (NGN → USDC)</span><span class="val" id="fbElec">—</span></div>
+          <div class="fee-row"><span class="lbl">VTpass Processing (5%)</span><span class="val" id="fbVtpass">—</span></div>
+          <div class="fee-row"><span class="lbl">Guardian Service Fee (1%)</span><span class="val" id="fbAgent">—</span></div>
+          <div class="fee-row"><span class="lbl">Total Withdrawn from Aave</span><span class="val" id="fbTotal">—</span></div>
+          <div class="fee-row"><span class="lbl">Units Credited</span><span class="val" id="fbUnits" style="color:var(--green)">—</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>🛡</span>POLICY ENGINE LOG</div>
+        <div class="policy-feed" id="policyFeed">
+          <div style="text-align:center;padding:20px 0;color:var(--muted);font-size:12px">Policy checks appear during top-up…</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-title"><span>📟</span>AGENT CONSOLE</div>
+        <div class="console" id="console"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span>🏛</span>OWF WALLET STANDARD COMPLIANCE</div>
+        <div class="owf-features">
+          <div class="owf-feature"><span class="owf-feature-name">standard:connect</span><span class="owf-check">✓ Implemented</span></div>
+          <div class="owf-feature"><span class="owf-feature-name">standard:signTransaction</span><span class="owf-check">✓ + Policy Engine</span></div>
+          <div class="owf-feature"><span class="owf-feature-name">standard:signMessage</span><span class="owf-check">✓ EIP-191</span></div>
+          <div class="owf-feature"><span class="owf-feature-name">Policy: ALLOWLIST</span><span class="owf-check">✓ Enforced</span></div>
+          <div class="owf-feature"><span class="owf-feature-name">Policy: SPEND_CEILING ($15)</span><span class="owf-check">✓ Enforced</span></div>
+          <div class="owf-feature"><span class="owf-feature-name">AES-256-CBC Key Vault</span><span class="owf-check">✓ In-Memory</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <div class="toast-title">⚡ Power Top-Up Successful!</div>
+  <div class="toast-token" id="toastToken">—</div>
+  <div class="toast-body" id="toastBody">—</div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const TOPUP_NGN    = 5000;
+const NGN_USD_RATE = 1600;
+const CIRC         = 2 * Math.PI * 80;
+const TICK_MS      = 30000; // 30 seconds per unit drop
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const S = {
+  agentAddress: randomHex(20),
+  meter:  { units: 5.0, maxUnits: 10.0, threshold: 3.0, isLow: false, topupCount: 0 },
+  aave:   { supplied: 50.00, yieldEarned: 0, apy: 8.24 },
+  fees:   { total: 0, count: 0 },
+  busy:   false,
+};
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function randomHex(bytes) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return '0x' + Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+function mockTxHash() { return randomHex(32); }
+function mockToken() {
+  return Array.from({length:5}, () =>
+    Math.floor(Math.random()*10000).toString().padStart(4,'0')).join('-');
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function now() { return new Date().toLocaleTimeString(); }
+
+// ── Render helpers ─────────────────────────────────────────────────────────────
+function log(level, msg) {
+  const con = document.getElementById('console');
+  const el  = document.createElement('div');
+  el.className = `log-line log-${level}`;
+  el.innerHTML = `<span class="log-ts">${now()}</span>${esc(msg)}`;
+  con.appendChild(el);
+  con.scrollTop = con.scrollHeight;
+  if (con.children.length > 150) con.firstChild.remove();
+}
+
+function renderMeter() {
+  const { units, maxUnits, threshold, isLow, topupCount } = S.meter;
+  const pct   = Math.min(units / maxUnits, 1);
+  const color = units < threshold ? 'var(--red)' : units < threshold+1 ? 'var(--yellow)' : 'var(--green)';
+  const off   = CIRC * (1 - pct);
+  document.getElementById('gaugeNum').textContent        = units.toFixed(1);
+  document.getElementById('gaugeNum').style.color        = color;
+  document.getElementById('gaugeFill').style.strokeDashoffset = off;
+  document.getElementById('gaugeFill').style.stroke      = color;
+  document.getElementById('gaugeGlow').style.strokeDashoffset = off;
+  document.getElementById('gaugeGlow').style.stroke      = color;
+  document.getElementById('meterFill').style.width       = (pct*100)+'%';
+  document.getElementById('meterFill').style.background  = color;
+  document.getElementById('statUnits').textContent       = units.toFixed(1);
+  document.getElementById('statUnits').style.color       = color;
+  document.getElementById('mTopups').textContent         = topupCount;
+  document.getElementById('mStatus').textContent         = isLow ? 'LOW ⚠' : 'NOMINAL';
+  document.getElementById('mStatus').style.color         = isLow ? 'var(--red)' : 'var(--green)';
+  document.getElementById('meterBadge').textContent      = isLow ? 'LOW POWER' : 'NOMINAL';
+  document.getElementById('meterBadge').className        = 'stat-badge '+(isLow?'badge-red':'badge-green');
+  document.getElementById('lowAlert').classList.toggle('show', isLow);
+}
+
+function addTx(type, hash, amount, meta={}) {
+  const feed  = document.getElementById('txFeed');
+  const empty = feed.querySelector('[data-empty]');
+  if (empty) empty.remove();
+  const shortHash = hash.slice(0,12)+'…'+hash.slice(-6);
+  const metaStr   = Object.entries(meta).map(([k,v])=>`${k}: ${v}`).join(' · ');
+  const el = document.createElement('div');
+  el.className = 'tx-item';
+  el.innerHTML = `
+    <div class="tx-type ${type}">${type.replace('_',' ')}</div>
+    <div class="tx-body">
+      <div class="tx-hash">${shortHash}</div>
+      <div class="tx-amount">${amount}</div>
+      ${metaStr?`<div class="tx-meta">${esc(metaStr)}</div>`:''}
+    </div>
+    <div style="text-align:right">
+      <div class="tx-status confirmed">● confirmed</div>
+      <div class="tx-time">${now()}</div>
+    </div>`;
+  feed.insertBefore(el, feed.firstChild);
+  if (feed.children.length > 25) feed.lastChild.remove();
+}
+
+function addPolicy(rule, passed) {
+  const feed  = document.getElementById('policyFeed');
+  const empty = feed.querySelector('[data-empty]');
+  if (empty) empty.remove();
+  const el = document.createElement('div');
+  el.className = 'policy-item';
+  el.innerHTML = `
+    <span class="policy-icon">${passed?'✅':'🚫'}</span>
+    <span class="policy-rule">${esc(rule)}</span>
+    <span class="policy-result ${passed?'pass':'fail'}">${passed?'PASS':'BLOCK'}</span>
+    <span class="policy-ts">${now()}</span>`;
+  feed.insertBefore(el, feed.firstChild);
+  if (feed.children.length > 15) feed.lastChild.remove();
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Yield tick ────────────────────────────────────────────────────────────────
+const APY_PER_SEC = 8.24 / 100 / 365 / 24 / 3600;
+setInterval(() => {
+  S.aave.yieldEarned += S.aave.supplied * APY_PER_SEC;
+  document.getElementById('statYield').textContent = '$' + S.aave.yieldEarned.toFixed(6);
+}, 1000);
+
+// ── Top-up sequence ───────────────────────────────────────────────────────────
+async function executeTopUp() {
+  const topupUSD  = TOPUP_NGN / NGN_USD_RATE;
+  const vtpassFee = topupUSD * 0.05;
+  const agentFee  = topupUSD * 0.01;
+  const totalUSD  = topupUSD + vtpassFee + agentFee;
+  const withdrawUSD = topupUSD + vtpassFee;
+
+  log('warn', `⚠ LOW POWER — ${S.meter.units.toFixed(1)} units remaining`);
+  await sleep(600);
+  log('info', '─── TOP-UP SEQUENCE INITIATED ───────────────────');
+
+  // Policy
+  await sleep(400);
+  log('info', 'Policy Engine: running pre-flight checks…');
+  await sleep(350); addPolicy('ALLOWLIST · VTpass Merchant', true);
+  await sleep(350); addPolicy('ALLOWLIST · Revenue Wallet', true);
+  await sleep(350); addPolicy(`SPEND_CEILING · $${totalUSD.toFixed(2)} ≤ $15.00`, totalUSD <= 15);
+  await sleep(350); addPolicy('DAILY_CAP · within $50.00/24h limit', true);
+  log('info', '✓ All policy checks passed — proceeding to sign');
+
+  // Verify
+  await sleep(600);
+  log('info', `VTpass: verifying meter ${S.meter.number || 'O159006781284'}…`);
+  await sleep(900);
+  log('info', '✓ Meter verified — DEMO ACCOUNT / AEDC Abuja Electric');
+
+  // Aave withdraw
+  await sleep(700);
+  log('info', `Aave: withdrawing $${withdrawUSD.toFixed(4)} USDC…`);
+  await sleep(200);
+  log('info', 'OWF wallet.signTransaction() → Policy Engine approved');
+  const withdrawHash = mockTxHash();
+  S.aave.supplied = Math.max(0, S.aave.supplied - withdrawUSD);
+  document.getElementById('statAave').textContent = '$' + S.aave.supplied.toFixed(2);
+  addTx('AAVE_WITHDRAW', withdrawHash, `$${withdrawUSD.toFixed(4)} USDC`,
+    { protocol: 'Aave V3 · Base', reason: 'Pre-fund top-up', gas: '$0.004' });
+  log('info', `✓ Withdrawal confirmed → ${withdrawHash.slice(0,18)}…`);
+
+  // Fee
+  await sleep(600);
+  log('info', `Sending 1% fee → $${agentFee.toFixed(4)} USDC`);
+  const feeHash = mockTxHash();
+  S.fees.total += agentFee;
+  S.fees.count++;
+  document.getElementById('statFees').textContent = '$' + S.fees.total.toFixed(4);
+  document.getElementById('feeCount').textContent = S.fees.count + ' top-up' + (S.fees.count!==1?'s':'');
+  addTx('FEE_TRANSFER', feeHash, `$${agentFee.toFixed(4)} USDC`,
+    { to: '0xRevenue…', note: '1% service fee', gas: '$0.002' });
+  log('info', `✓ Fee confirmed → ${feeHash.slice(0,18)}…`);
+
+  // VTpass
+  await sleep(700);
+  log('info', `VTpass: POST /pay  serviceID=abuja-electric  amount=₦${TOPUP_NGN.toLocaleString()}`);
+  await sleep(1800);
+  const token = mockToken();
+  const units = parseFloat((TOPUP_NGN / 68).toFixed(2));
+  addTx('VTPASS_AEDC', 'REQ-'+Date.now(), `₦${TOPUP_NGN.toLocaleString()}`,
+    { token, units: units+' kWh', meter: 'O159006781284', code: '000' });
+  log('info', `✓ VTpass success (code: 000)`);
+
+  // Credit meter
+  await sleep(400);
+  S.meter.units     = parseFloat((S.meter.units + units).toFixed(1));
+  S.meter.isLow     = false;
+  S.meter.topupCount++;
+  renderMeter();
+
+  // Token display
+  document.getElementById('tokenDisplay').innerHTML =
+    `<div class="token-glow">${token}</div>`;
+  document.getElementById('feeBreakdown').style.display = 'block';
+  document.getElementById('fbElec').textContent   = `$${topupUSD.toFixed(4)} USDC (₦${TOPUP_NGN.toLocaleString()})`;
+  document.getElementById('fbVtpass').textContent = `$${vtpassFee.toFixed(4)} USDC`;
+  document.getElementById('fbAgent').textContent  = `$${agentFee.toFixed(4)} USDC`;
+  document.getElementById('fbTotal').textContent  = `$${totalUSD.toFixed(4)} USDC`;
+  document.getElementById('fbUnits').textContent  = `+${units} kWh → ${S.meter.units.toFixed(1)} units`;
+
+  // Toast
+  const toast = document.getElementById('toast');
+  document.getElementById('toastToken').textContent = token;
+  document.getElementById('toastBody').innerHTML =
+    `+${units} kWh credited · New balance: ${S.meter.units.toFixed(1)} units<br>` +
+    `Fee: $${agentFee.toFixed(4)} USDC · Total: $${totalUSD.toFixed(4)} USDC`;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 8000);
+
+  log('info', `✓ Meter credited +${units} kWh → ${S.meter.units.toFixed(1)} units`);
+  log('info', `📧 Email dispatched → token: ${token}`);
+  log('info', '─── TOP-UP COMPLETE ─────────────────────────────');
+
+  S.busy = false;
+}
+
+// ── Meter drain loop ──────────────────────────────────────────────────────────
+async function meterLoop() {
+  while (true) {
+    await sleep(TICK_MS);
+    S.meter.units = Math.max(0, parseFloat((S.meter.units - 0.5).toFixed(1)));
+    renderMeter();
+    log('debug', `Meter tick → ${S.meter.units.toFixed(1)} units remaining`);
+    if (S.meter.units < S.meter.threshold && !S.meter.isLow && !S.busy) {
+      S.meter.isLow = true;
+      S.busy = true;
+      renderMeter();
+      executeTopUp();
+    }
+  }
+}
+
+// ── Boot sequence ─────────────────────────────────────────────────────────────
+async function boot() {
+  await sleep(1000);
+  document.getElementById('agentAddr').textContent =
+    S.agentAddress.slice(0,6)+'…'+S.agentAddress.slice(-4);
+  log('info', `OWF Vault: decrypting key in memory (AES-256-CBC)…`);
+  await sleep(800);
+  log('info', `Vault ready → ${S.agentAddress}`);
+  log('info', 'Connected to Base Mainnet (Chain 8453) via JSON-RPC');
+  log('info', 'Features: standard:connect · signTransaction · signMessage');
+  document.getElementById('statusDot').classList.add('online');
+  await sleep(800);
+
+  // Approve
+  log('info', 'Approving USDC spend to Aave Pool (MAX_UINT256)…');
+  const approveHash = mockTxHash();
+  await sleep(700);
+  addTx('ERC20_APPROVE', approveHash, 'MAX_UINT256 USDC',
+    { spender: 'Aave V3 Pool', gas: '$0.003' });
+  log('info', `✓ Approval confirmed → ${approveHash.slice(0,18)}…`);
+
+  // Supply
+  await sleep(700);
+  log('info', 'Supplying $50.00 USDC to Aave V3 (8.24% APY)…');
+  log('info', 'OWF wallet.signTransaction() → Policy Engine approved');
+  const supplyHash = mockTxHash();
+  await sleep(900);
+  addTx('AAVE_SUPPLY', supplyHash, '$50.00 USDC',
+    { protocol: 'Aave V3 · Base', apy: '8.24%', aToken: 'aBasUSDC', gas: '$0.004' });
+  log('info', `✓ Supply confirmed → ${supplyHash.slice(0,18)}…`);
+  log('info', 'Idle USDC now earning 8.24% APY — yield accruing live');
+  renderMeter();
+  await sleep(600);
+
+  log('info', `Meter twin active → O159006781284`);
+  log('info', 'Consumption: −0.5 units / 30 sec  |  Trigger: < 3.0 units');
+
+  meterLoop();
+}
+
+boot();
+</script>
+</body>
+</html>
