@@ -19,6 +19,18 @@ const logger                = require('./logger');
 const USDC_DECIMALS         = 6;
 const DAILY_LIMIT_USD       = 50; // hard ceiling across all topups in 24 h
 
+// ─── Authorized bridge sources (Starknet → Base inflows) ────────────────────
+// Transfers from these addresses are treated as 'Authorized Funding' rather
+// than external intrusion.  The deBridge receiver contract deposits bridged
+// USDC directly into the agent wallet.
+const AUTHORIZED_FUNDING_SOURCES = new Set([
+  config.BRIDGE_BASE_RECEIVER,           // deBridge receiver on Base
+].filter(Boolean));
+
+// ─── Starknet-side authorized contracts (AVNU/Ekubo aggregation) ────────────
+// These contracts are pre-approved for on-chain swaps via session keys.
+const STARKNET_AUTHORIZED_CONTRACTS = config.STARKNET_ALLOWED_CONTRACTS || new Set();
+
 // ─── Spend ledger (in-memory; replace with Redis/DB for production) ───────────
 const _spendLog = [];  // [{ timestamp: Date, amountUSD: number }]
 
@@ -100,6 +112,33 @@ class PolicyEngine {
     }
     return false;
   }
+
+  /**
+   * isAuthorizedFunding(fromAddress) — Check if an incoming transfer is from
+   * a known bridge contract (Starknet → Base).  These inflows are treated as
+   * legitimate yield funding rather than external intrusion.
+   *
+   * @param {string} fromAddress - the sender address on Base
+   * @returns {{ authorized: boolean, source: string }}
+   */
+  isAuthorizedFunding(fromAddress) {
+    try {
+      const normalized = ethers.getAddress(fromAddress);
+      for (const src of AUTHORIZED_FUNDING_SOURCES) {
+        try {
+          if (ethers.getAddress(src) === normalized) {
+            logger.info('Authorized Funding recognized', {
+              from:   normalized,
+              source: 'Starknet Bridge',
+            });
+            return { authorized: true, source: 'starknet-bridge' };
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* malformed address */ }
+
+    return { authorized: false, source: 'unknown' };
+  }
 }
 
 class PolicyViolation extends Error {
@@ -109,4 +148,4 @@ class PolicyViolation extends Error {
   }
 }
 
-module.exports = { PolicyEngine, PolicyViolation };
+module.exports = { PolicyEngine, PolicyViolation, AUTHORIZED_FUNDING_SOURCES, STARKNET_AUTHORIZED_CONTRACTS };

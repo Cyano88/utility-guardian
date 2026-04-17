@@ -28,6 +28,9 @@ const AaveManager                = require('./aave');
 const MeterTwin                  = require('./meter');
 const { VTpassClient, VTpassError } = require('./vtpass');
 const { sendTopupConfirmation }  = require('./notify');
+const { StarknetService }        = require('./services/starknet');
+const { BridgeService }          = require('./services/bridge');
+const { ArcNanopaymentService }  = require('./services/arc');
 
 const ERC20_ABI = require('./abis/ERC20.json');
 
@@ -35,11 +38,15 @@ const USDC_DECIMALS = 6;
 
 class UtilityGuardian {
   constructor() {
-    this.policy  = new PolicyEngine();
-    this.aave    = new AaveManager(this.policy);
-    this.meter   = new MeterTwin();
-    this.vtpass  = new VTpassClient();
-    this._busy   = false; // mutex — prevent concurrent top-up runs
+    this.policy    = new PolicyEngine();
+    this.aave      = new AaveManager(this.policy);
+    this.meter     = new MeterTwin();
+    this.vtpass    = new VTpassClient();
+    this.starknet  = new StarknetService();
+    this.bridge    = new BridgeService();
+    this.arc       = new ArcNanopaymentService(this.policy, vault);
+    this._busy     = false; // mutex — prevent concurrent top-up runs
+    this._yieldTimer = null;
   }
 
   // ─── Startup ───────────────────────────────────────────────────────────────
@@ -68,18 +75,75 @@ class UtilityGuardian {
     const position = await this.aave.getPosition().catch(() => null);
     if (position) logger.info('Initial position', position);
 
-    // 4. Start the meter twin → listen for low-power events
+    // 4. Initialise Starknet Frictionless Inflow
+    try {
+      await this.starknet.init();
+      // Add bridge contract to policy allowlist
+      this.policy.addAllowedRecipient(config.BRIDGE_BASE_RECEIVER);
+      logger.info('Frictionless Inflow online', {
+        starknetAddress: this.starknet.address,
+        yieldMode:       this.starknet.yieldMode,
+        network:         'Starknet Sepolia',
+      });
+    } catch (err) {
+      logger.warn('Starknet init skipped', { reason: err.message });
+    }
+
+    // 5. Start Circle Arc nanopayment streaming
+    try {
+      this.arc.start((accumulated) => this._handleArcThreshold(accumulated));
+      this.policy.addAllowedRecipient(config.ARC_RELAY_ADDRESS);
+      logger.info('Circle Arc streaming started', {
+        network:   'Base Sepolia',
+        tickCost:  `$${config.ARC_TICK_COST}`,
+        threshold: `$${config.ARC_ACCUMULATOR_THRESHOLD}`,
+        protocol:  'x402 + EIP-3009',
+      });
+    } catch (err) {
+      logger.warn('Arc init skipped', { reason: err.message });
+    }
+
+    // 6. Start the meter twin → listen for low-power events
     this.meter.on('low', (evt) => this._handleLowMeter(evt));
     this.meter.start();
 
-    // 5. Heartbeat
+    // 7. Heartbeat
     setInterval(() => this._heartbeat(), config.TICK_INTERVAL_MS);
 
+    // 8. Starknet yield generation check (every 12-24 hours)
+    this._yieldTimer = setInterval(
+      () => this._generationCheck(),
+      config.STARKNET_YIELD_CHECK_MS
+    );
+    // Run an initial check after a short delay
+    setTimeout(() => this._generationCheck(), 30_000);
+
     logger.info('=== Utility Guardian running ===', {
-      meter:    config.METER_NUMBER,
-      trigger:  `< ${config.TRIGGER_THRESHOLD} units`,
-      topupNGN: config.TOPUP_AMOUNT_NGN,
+      meter:     config.METER_NUMBER,
+      trigger:   `< ${config.TRIGGER_THRESHOLD} units`,
+      topupNGN:  config.TOPUP_AMOUNT_NGN,
+      starknet:  this.starknet.address ? 'ACTIVE' : 'DISABLED',
+      yieldMode: this.starknet.yieldMode || 'N/A',
+      arc:       `streaming $${config.ARC_TICK_COST}/tick → $${config.ARC_ACCUMULATOR_THRESHOLD} threshold`,
     });
+  }
+
+  // ─── Arc threshold handler ─────────────────────────────────────────────────
+
+  /**
+   * Called by the Arc accumulator when streamed USDC hits the threshold.
+   * Logs the event; can optionally trigger a direct VTpass purchase.
+   * In the primary flow, the main Aave→VTpass path handles top-ups;
+   * Arc top-ups serve as the nano-billing (streaming utilities) pathway.
+   */
+  async _handleArcThreshold(accumulatedUSD) {
+    logger.info('Arc threshold reached — utility payment cycle', {
+      accumulated:  `$${accumulatedUSD.toFixed(4)}`,
+      arcStatus:    this.arc.getStatus(),
+    });
+    // Optionally execute a direct top-up here (bypassing Aave withdrawal)
+    // for pure Arc-streamed electricity purchases:
+    // await this._executeTopUp({ source: 'arc', amountUSD: accumulatedUSD });
   }
 
   // ─── Core top-up flow ──────────────────────────────────────────────────────
@@ -223,6 +287,87 @@ class UtilityGuardian {
     return receipt.hash;
   }
 
+  // ─── Starknet Generation Check ──────────────────────────────────────────────
+
+  /**
+   * _generationCheck() — Periodic yield harvest from Starknet Frictionless Inflow.
+   *
+   * Stability mode: check nUSDC yield accrued → withdraw → bridge to Base
+   * Growth mode:    check STRK rewards → harvest → swap to USDC → bridge to Base
+   */
+  async _generationCheck() {
+    if (!this.starknet.address) return;
+
+    try {
+      logger.info('--- GENERATION CHECK ---');
+
+      // 1. Check yield status
+      const status = await this.starknet.getYieldStatus();
+      logger.info('Starknet yield status', {
+        mode:          status.yieldMode,
+        usdcDeposited: status.usdcDeposited.toFixed(4),
+        strkPending:   status.strkPending.toFixed(4),
+        stabilityYield: status.stabilityYield.toFixed(4),
+      });
+
+      // 2. Check harvest thresholds based on mode
+      const harvestable = status.yieldMode === 'stability'
+        ? status.stabilityYield
+        : status.strkPending;
+
+      const threshold = status.yieldMode === 'stability'
+        ? config.STARKNET_STRK_MIN_HARVEST  // reuse threshold for both modes
+        : config.STARKNET_STRK_MIN_HARVEST;
+
+      if (harvestable < threshold) {
+        logger.debug('Yield below harvest threshold', {
+          pending:   harvestable.toFixed(4),
+          threshold,
+          mode:      status.yieldMode,
+        });
+        return;
+      }
+
+      // 3. Harvest & swap to USDC
+      const harvest = await this.starknet.harvestAndSwap();
+      if (!harvest) return;
+
+      logger.info('Harvest complete', {
+        usdcReceived: harvest.usdcReceived.toFixed(4),
+        source:       harvest.source,
+        gasMode:      harvest.gasMode,
+      });
+
+      // 4. Check bridge economics
+      const bridgeCheck = this.bridge.shouldBridge(harvest.usdcReceived);
+      if (!bridgeCheck.viable) {
+        logger.info('Bridge deferred -- not yet economical', {
+          reason: bridgeCheck.reason,
+        });
+        return;
+      }
+
+      // 5. Bridge to Base vault
+      const bridgeReceipt = await this.bridge.bridge(
+        harvest.usdcReceived,
+        vault.address
+      );
+
+      // 6. Verify as authorized funding
+      const funding = this.policy.isAuthorizedFunding(config.BRIDGE_BASE_RECEIVER);
+      logger.info('Bridge initiated -- Authorized Funding', {
+        txHash:     bridgeReceipt.txHash,
+        netAmount:  bridgeReceipt.netAmount.toFixed(4),
+        eta:        bridgeReceipt.estimatedArrival,
+        authorized: funding.authorized,
+      });
+
+      logger.info('--- GENERATION CHECK COMPLETE ---');
+    } catch (err) {
+      logger.error('Generation check failed', { error: err.message });
+    }
+  }
+
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
   /** Rough unit estimate when VTpass doesn't return units in response. */
@@ -249,6 +394,8 @@ class UtilityGuardian {
   /** Graceful shutdown hook. */
   async stop() {
     this.meter.stop();
+    this.arc.stop();
+    if (this._yieldTimer) clearInterval(this._yieldTimer);
     logger.info('Utility Guardian stopped.');
   }
 }
